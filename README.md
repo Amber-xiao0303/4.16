@@ -38,3 +38,6 @@ for col in df.columns:
         df[col] = df[col].fillna(df[col].median())
     else:
         df[col] = df[col].fillna(df[col].mode()[0])
+output_path = os.path.join(desktop_path, "ICData_清洗后.csv")
+df.to_csv(output_path, index=False, encoding="utf-8-sig")
+print(f"\n处理完成")
