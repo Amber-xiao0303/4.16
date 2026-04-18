@@ -96,6 +96,57 @@ save_path = os.path.join(desktop_path, "hour_distribution.png")
 plt.savefig(save_path, dpi=150, bbox_inches="tight")
 plt.close()
 
+import seaborn as sns
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+file_path = os.path.join(desktop_path, "ICData.csv")
+
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df["hour"] = df["交易时间"].dt.hour
+df["ride_stops"] = abs(df["下车站点"] - df["上车站点"])
+df = df[df["ride_stops"] != 0].reset_index(drop=True)
+
+def analyze_route_stops(df, route_col='线路号', stops_col='ride_stops'):
+    # 分组计算均值和标准差
+    result = df.groupby(route_col)[stops_col].agg(['mean', 'std']).reset_index()
+    result.columns = ['线路号', 'mean_stops', 'std_stops']
+    # 按均值降序排序
+    result = result.sort_values('mean_stops', ascending=False).reset_index(drop=True)
+    return result
+
+route_stats = analyze_route_stops(df)
+print("=" * 60)
+print("各线路平均搭乘站点数（前10行）")
+print("=" * 60)
+print(route_stats.head(10))
+
+plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei"]
+plt.rcParams["axes.unicode_minus"] = False
+
+# 取均值最高的前15条线路
+top15 = route_stats.head(15)
+
+plt.figure(figsize=(10, 6))
+sns.barplot(
+    data=top15,
+    x='mean_stops',
+    y='线路号',
+    xerr='std_stops',  # 误差棒=标准差
+    capsize=0.3,       # 误差棒端点
+    palette='Blues_d'
+)
+
+# 图表样式
+plt.title('各线路平均搭乘站点数（Top15）', fontsize=14)
+plt.xlabel('平均搭乘站点数', fontsize=12)
+plt.ylabel('线路号', fontsize=12)
+plt.xlim(left=0)
+
+save_path = os.path.join(desktop_path, "route_stops.png")
+plt.tight_layout()
+plt.savefig(save_path, dpi=150, bbox_inches='tight')
+plt.close()
+
 desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
 file_path = os.path.join(desktop_path, "ICData.csv")
 
@@ -144,3 +195,96 @@ df = pd.read_csv(file_path, sep=None, engine="python")
 df["交易时间"] = pd.to_datetime(df["交易时间"])
 df["ride_stops"] = abs(df["下车站点"] - df["上车站点"])
 df = df[df["ride_stops"] != 0].reset_index(drop=True)
+
+# 1. 筛选线路号在 1101 ~ 1120 之间的记录
+df_filtered = df[(df["线路号"] >= 1101) & (df["线路号"] <= 1120)].copy()
+
+# 2. 在程序根目录创建 线路驾驶员信息 文件夹
+root_dir = os.path.dirname(os.path.abspath(__file__))  # 程序根目录
+output_folder = os.path.join(root_dir, "线路驾驶员信息")
+os.makedirs(output_folder, exist_ok=True)
+
+# 3. 遍历每条线路，生成去重后的 车辆→驾驶员 文件
+unique_routes = sorted(df_filtered["线路号"].unique())
+
+for route in unique_routes:
+    # 筛选当前线路数据
+    route_data = df_filtered[df_filtered["线路号"] == route]
+
+    # 去重：保留唯一的 车辆编号 → 驾驶员编号 对应关系
+    driver_map = route_data[["车辆编号", "驾驶员编号"]].drop_duplicates().sort_values("车辆编号")
+
+    # 文件名：1101.txt
+    file_name = f"{route}.txt"
+    save_path = os.path.join(output_folder, file_name)
+
+    # 写入txt文件（严格按要求格式）
+    with open(save_path, "w", encoding="utf-8") as f:
+        f.write(f"线路号: {route}\n")
+        f.write("车辆编号\t驾驶员编号\n")
+        for _, row in driver_map.iterrows():
+            f.write(f"{int(row['车辆编号'])}\t\t{int(row['驾驶员编号'])}\n")
+
+    # 4. 打印每个文件的生成路径
+    print(f"已生成：{save_path}")
+
+print("\n20条线路文件导出成功")
+
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df["ride_stops"] = abs(df["下车站点"] - df["上车站点"])
+df = df[df["ride_stops"] != 0].reset_index(drop=True)
+df = df[df["刷卡类型"] == 0].copy()  # 只算有效上车记录
+
+# 统计规则：每条有效记录 = 1人次
+top10_driver    = df['驾驶员编号'].value_counts().head(10)
+top10_route     = df['线路号'].value_counts().head(10)
+top10_stop      = df['上车站点'].value_counts().head(10)
+top10_bus       = df['车辆编号'].value_counts().head(10)
+
+# 打印所有排名
+print("=" * 70)
+print("【Top10 司机（服务人次）】")
+print(top10_driver)
+print("\n【Top10 线路（服务人次）】")
+print(top10_route)
+print("\n【Top10 上车站点（服务人次）】")
+print(top10_stop)
+print("\n【Top10 车辆（服务人次）】")
+print(top10_bus)
+print("=" * 70)
+
+heatmap_data = np.array([
+    top10_driver.values,
+    top10_route.values,
+    top10_stop.values,
+    top10_bus.values
+])
+
+# 行/列标签
+row_labels    = ['司机', '线路', '上车站点', '车辆']
+col_labels    = [f'Top{i+1}' for i in range(10)]
+
+plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei"]
+plt.rcParams["axes.unicode_minus"] = False
+
+plt.figure(figsize=(14, 6))
+sns.heatmap(
+    heatmap_data,
+    annot=True,        # 标注数值
+    fmt='g',           # 普通数字格式
+    cmap='YlOrRd',     # 配色
+    xticklabels=col_labels,
+    yticklabels=row_labels
+)
+
+# 标题与样式
+plt.title('公交服务能力 Top10 热力图对比', fontsize=16, pad=15)
+plt.xlabel('排名', fontsize=12)
+plt.ylabel('维度', fontsize=12)
+plt.xticks(rotation=0)  # x轴标签不旋转
+
+# 保存图片
+save_path = os.path.join(desktop_path, "performance_heatmap.png")
+plt.savefig(save_path, dpi=150, bbox_inches='tight')
+plt.close()
