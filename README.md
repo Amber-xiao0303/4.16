@@ -96,4 +96,51 @@ save_path = os.path.join(desktop_path, "hour_distribution.png")
 plt.savefig(save_path, dpi=150, bbox_inches="tight")
 plt.close()
 
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+file_path = os.path.join(desktop_path, "ICData.csv")
 
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df = df[df["刷卡类型"] == 0].copy().reset_index(drop=True)  # 只算上车刷卡
+
+df['hour'] = df['交易时间'].dt.hour
+hour_count = df.groupby('hour').size()
+peak_hour = hour_count.idxmax()
+peak_volume = hour_count.max()
+
+print(f"高峰小时：{peak_hour:02d}:00 ~ {peak_hour+1:02d}:00，刷卡量：{peak_volume} 次")
+
+# 筛选高峰小时内的所有数据
+peak_hour_data = df[df['hour'] == peak_hour].copy()
+
+peak_hour_data['5min_bin'] = peak_hour_data['交易时间'].dt.floor('5min')
+max_5min = peak_hour_data.groupby('5min_bin').size().max()
+phf5 = peak_volume / (12 * max_5min)
+
+# 找到最大5分钟时间段
+# dt.floor('5min')：将交易时间按5分钟向下取整（如20:03归为20:00，确保时间区间准确）
+# 生成5分钟时间片标签，用于分组统计
+max_5min_time = peak_hour_data.groupby('5min_bin').size().idxmax()
+max_5min_str = f"{max_5min_time.strftime('%H:%M')}~{(max_5min_time + pd.Timedelta(minutes=5)).strftime('%H:%M')}"
+
+print(f"最大5分钟刷卡量（{max_5min_str}）：{max_5min} 次")
+print(f"PHF5  = {peak_volume} / (12 × {max_5min}) = {phf5:.4f}")
+
+peak_hour_data['15min_bin'] = peak_hour_data['交易时间'].dt.floor('15min')
+max_15min = peak_hour_data.groupby('15min_bin').size().max()
+phf15 = peak_volume / (4 * max_15min)
+
+# 找到最大15分钟时间段
+# 格式化输出时间段（如20:00~20:15）
+# PHF15计算公式：高峰小时总刷卡量 ÷（4个15分钟 × 最大15分钟刷卡量）
+# dt.floor('15min')：将交易时间按15分钟向下取整，生成15分钟时间片标签
+max_15min_time = peak_hour_data.groupby('15min_bin').size().idxmax()
+max_15min_str = f"{max_15min_time.strftime('%H:%M')}~{(max_15min_time + pd.Timedelta(minutes=15)).strftime('%H:%M')}"
+
+print(f"最大15分钟刷卡量（{max_15min_str}）：{max_15min} 次")
+print(f"PHF15 = {peak_volume} / ( 4 × {max_15min}) = {phf15:.4f}")
+
+df = pd.read_csv(file_path, sep=None, engine="python")
+df["交易时间"] = pd.to_datetime(df["交易时间"])
+df["ride_stops"] = abs(df["下车站点"] - df["上车站点"])
+df = df[df["ride_stops"] != 0].reset_index(drop=True)
